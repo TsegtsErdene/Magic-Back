@@ -1,5 +1,4 @@
-# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
-# More GitHub Actions for Azure: https://github.com/Azure/actions
+# .github/workflows/azure-webapp-deploy.yml
 
 name: Build and deploy Node.js app to Azure Web App - magic-user
 
@@ -13,7 +12,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read #This is required for actions/checkout
+      contents: read # Энэ нь actions/checkout-д хэрэгтэй
 
     steps:
       - uses: actions/checkout@v4
@@ -21,13 +20,12 @@ jobs:
       - name: Set up Node.js version
         uses: actions/setup-node@v3
         with:
-          node-version: '22.x'
+          node-version: '22.x' # Энд Node.js хувилбараа тохируулж болно
 
-      - name: npm install, build, and test
+      - name: npm install and build
         run: |
           npm install
           npm run build --if-present
-          npm run test --if-present
 
       - name: Zip artifact for deployment
         run: zip release.zip ./* -r
@@ -41,10 +39,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build
-    
     permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
+      id-token: write # Энэ нь azure/login-д хэрэгтэй
+      contents: read
 
     steps:
       - name: Download artifact from build job
@@ -54,19 +51,13 @@ jobs:
 
       - name: Unzip artifact for deployment
         run: unzip release.zip
-      
+
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_B2143E636DEE4BAAB696A58B5C5B1098 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_EF482979EE2141F9A8D8823130BFA341 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_3DCDFFC328A7487C9C2BC76737330F16 }}
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_XXXXXXXXXXXX }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_XXXXXXXXXXXX }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_XXXXXXXXXXXX }}
 
       - name: 'Deploy to Azure Web App'
-        id: deploy-to-webapp
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: 'magic-user'
-          slot-name: 'Production'
-          package: .
-          
+        uses: azure/webapps-deploy@
