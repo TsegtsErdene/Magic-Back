@@ -60,5 +60,5 @@ jobs:
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'magic-user'
-          slot-name: 'Production'
+c          slot-name: 'Production'
           package: .
