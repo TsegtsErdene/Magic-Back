@@ -29,17 +29,25 @@ function toLatin(str) {
 
 exports.uploadFile = async (req, res) => {
     try {
-        const { userId, category } = req.body;
+        // categories[] олон байгаа бол string болгоно!
+        let { categories } = req.body;
+        const { companyName } = req.user;
         const file = req.file;
 
-        if (!file || !userId || !category) {
-            return res.status(400).json({ error: 'File, userId, category required' });
+        // Front-оос FormData ашиглаж явуулахад categories[] нь массив эсвэл string байж болно
+        if (Array.isArray(categories)) {
+            categories = categories.join(','); // "cat1,cat4,cat5"
+        }
+        // Хэрэв ганц категори сонгосон бол string хэвээр байна
+
+        if (!file || !companyName || !categories) {
+            return res.status(400).json({ error: 'File, companyName, category required' });
         }
 
-        const originalName = file.originalname; // Жинхэнэ нэр (кирилл байж болно)
+        const originalName = file.originalname;
         const safeName = toLatin(originalName) || ('file_' + Date.now() + '.bin');
         const timestamp = new Date().toISOString().replace(/[-:.]/g, '').slice(0, 15);
-        const blobName = `${userId}/${category}/${timestamp}-${safeName}`;
+        const blobName = `${companyName}/${timestamp}-${safeName}`;
 
         const containerClient = blobServiceClient.getContainerClient(CONTAINER_NAME);
         const blockBlobClient = containerClient.getBlockBlobClient(blobName);
@@ -49,9 +57,11 @@ exports.uploadFile = async (req, res) => {
         });
 
         await sql.connect(sqlConfig);
+
+        // !!! VALUES болон баганы тоог зөв тааруулсан эсэхээ шалгаарай !!!
         await sql.query`
             INSERT INTO FileMetadata (userId, category, filename, blobPath, uploadedAt)
-            VALUES (${userId}, ${category}, ${originalName}, ${blobName}, GETDATE())
+            VALUES (${companyName}, ${categories}, ${originalName}, ${blobName}, GETDATE())
         `;
 
         res.json({ message: 'File uploaded', blobPath: blobName });
@@ -63,11 +73,11 @@ exports.uploadFile = async (req, res) => {
 
 exports.listFiles = async (req, res) => {
     try {
-        const { userId } = req.query;
+        const { companyName } = req.user;
         await sql.connect(sqlConfig);
         const result = await sql.query`
             SELECT id, category, filename, blobPath, uploadedAt, status FROM FileMetadata
-            WHERE userId = ${userId}
+            WHERE userId = ${companyName}
         `;
         res.json(result.recordset);
     } catch (err) {
@@ -77,6 +87,7 @@ exports.listFiles = async (req, res) => {
 
 exports.getFileUrl = async (req, res) => {
     try {
+        console.log(req.user)
         const { blobPath } = req.query;
         const containerClient = blobServiceClient.getContainerClient(CONTAINER_NAME);
         const blobClient = containerClient.getBlobClient(blobPath);

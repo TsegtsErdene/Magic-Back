@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "nodemon index.js"
   },
   "keywords": [],
   "author": "",
@@ -17,6 +18,7 @@
     "express": "^5.1.0",
     "mssql": "^11.0.1",
     "multer": "^2.0.1",
+    "nodemon": "^3.1.10",
     "sanitize-filename": "^1.6.3"
   }
 }
