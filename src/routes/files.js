@@ -8,6 +8,6 @@ const filesController = require('../controllers/files');
 
 router.post('/upload', authMiddleware, upload.single('file'), filesController.uploadFile);
 router.get('/', authMiddleware, filesController.listFiles);
-router.get('/url', authMiddleware, filesController.getFileUrl);
+router.get('/url', filesController.getFileUrl);
 
 module.exports = router;
