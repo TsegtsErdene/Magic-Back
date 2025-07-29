@@ -9,7 +9,9 @@ const categoriesRoutes = require('./src/routes/categories');
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ encoding: 'utf-8'  }));
+app.use(express.urlencoded({ extended: true, encoding: 'utf-8' }));
+
 
 // File routes
 app.use('/api/files', fileRoutes);

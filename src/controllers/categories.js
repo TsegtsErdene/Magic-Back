@@ -15,7 +15,7 @@ exports.listCategories = async (req, res) => {
     try {
         await sql.connect(sqlConfig);
         const result = await sql.query`
-            SELECT id , categoryName, categoryValue FROM Categories WHERE companyName = ${companyName}
+            SELECT id , CategoryName FROM MaterialList WHERE companyName = ${companyName}
         `;
         res.json(result.recordset);
     } catch (err) {
