@@ -68,7 +68,7 @@ exports.listFiles = async (req, res) => {
         const { companyName } = req.user;
         await sql.connect(sqlConfig);
         const result = await sql.query`
-            SELECT id, category, filename, blobPath, uploadedAt, status FROM FileMetadata
+            SELECT id, category, filename, blobPath, uploadedAt, status, comment FROM FileMetadata
             WHERE userId = ${companyName}
         `;
         res.json(result.recordset);
