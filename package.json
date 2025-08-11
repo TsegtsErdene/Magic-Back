@@ -12,10 +12,13 @@
   "description": "",
   "dependencies": {
     "@azure/storage-blob": "^12.27.0",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
+    "axios": "^1.11.0",
     "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^17.0.1",
     "express": "^5.1.0",
+    "isomorphic-fetch": "^3.0.0",
     "mssql": "^11.0.1",
     "multer": "^2.0.1",
     "nodemon": "^3.1.10",
