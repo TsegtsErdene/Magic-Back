@@ -10,16 +10,25 @@ const sqlConfig = require('../config/sqlConfig'); // Жишээ, өөрийн co
 
 exports.listCategories = async (req, res) => {
     const { companyName } = req.user;
+    const availableOnly = req.query.availableOnly === '1'; // uploader-ийн сонголт
     if (!companyName) return res.status(400).json({ error: "companyName required" });
     // Жишээ: SQL-ээс уншина
     try {
         await sql.connect(sqlConfig);
         const result = await sql.query`
-            SELECT id , CategoryName FROM MaterialList WHERE companyName = ${companyName}
+            SELECT id , CategoryName, status, comment FROM MaterialList WHERE companyName = ${companyName}
         `;
-        res.json(result.recordset);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Failed to fetch categories', details: err.message });
+
+        let rows = result.recordset;
+
+    if (availableOnly) {
+      // uploader-ийн сонголтоос 'Хүлээгдэж буй' (already pending) категориудыг нуух
+        rows = rows.filter(r => ['Илгээгээгүй', 'Цуцалсан'].includes(r.status || ''));
     }
+
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch categories', details: err.message });
+  }
 };

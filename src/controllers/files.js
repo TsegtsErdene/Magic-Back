@@ -30,6 +30,7 @@ exports.uploadFile = async (req, res) => {
     const { companyName } = req.user;
     const file = req.file;
     const decodedName = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    const categoriesArr = Array.isArray(categories) ? categories : [categories];
     const originalName = decodedName;
     const timestamp = new Date().toISOString().replace(/[-:.]/g, '').slice(0, 15);
     const blobName = `${companyName}/${timestamp}-${originalName}`;
@@ -86,6 +87,13 @@ exports.uploadFile = async (req, res) => {
       INSERT INTO FileMetadata (userId, category, filename, blobPath, uploadedAt, status, sharepointFileId)
       VALUES (${companyName}, ${categoriesString}, ${originalName}, ${blobName}, GETDATE(), N'Хүлээгдэж буй', ${spRes.id})
     `;
+    for (const cat of categoriesArr) {
+      await sql.query`
+        UPDATE MaterialList
+        SET status = N'Хүлээгдэж буй'
+        WHERE companyName = ${companyName} AND CategoryName = ${cat};
+    `;
+  }
 
     res.json({
       message: 'Uploaded to Blob + SharePoint + SQL',
