@@ -56,36 +56,36 @@ exports.uploadFile = async (req, res) => {
       blobHTTPHeaders: { blobContentType: file.mimetype },
     });
 
-    // === 2) SharePoint руу ===
-    const accessToken = await getSharePointAccessToken();
-    // Эдгээрийг нэг удаа аваад .env-д хадгалж болно.
-    const siteId =
-      process.env.SHAREPOINT_SITE_ID ||
-      (await getSiteId(accessToken, process.env.SHAREPOINT_HOSTNAME, process.env.SHAREPOINT_SITE_PATH));
-    const driveId =
-      process.env.SHAREPOINT_DRIVE_ID ||
-      (await getDriveId(accessToken, siteId, process.env.SHAREPOINT_DRIVE_NAME || 'Shared Documents'));
-    // Хавтас (companyName/AUA_Uploads/soft гэх мэт өөрөө зохион байгуул)
-    const folder = process.env.SHAREPOINT_FOLDER
-      ? `${process.env.SHAREPOINT_FOLDER}/${companyName}`
-      : `AUA_Uploads/${companyName}`;
+    // // === 2) SharePoint руу ===
+    // const accessToken = await getSharePointAccessToken();
+    // // Эдгээрийг нэг удаа аваад .env-д хадгалж болно.
+    // const siteId =
+    //   process.env.SHAREPOINT_SITE_ID ||
+    //   (await getSiteId(accessToken, process.env.SHAREPOINT_HOSTNAME, process.env.SHAREPOINT_SITE_PATH));
+    // const driveId =
+    //   process.env.SHAREPOINT_DRIVE_ID ||
+    //   (await getDriveId(accessToken, siteId, process.env.SHAREPOINT_DRIVE_NAME || 'Shared Documents'));
+    // // Хавтас (companyName/AUA_Uploads/soft гэх мэт өөрөө зохион байгуул)
+    // const folder = process.env.SHAREPOINT_FOLDER
+    //   ? `${process.env.SHAREPOINT_FOLDER}/${companyName}`
+    //   : `AUA_Uploads/${companyName}`;
 
-    const spRes = await uploadToSharePoint(
-      accessToken,
-      siteId,
-      driveId,
-      folder,
-      file.buffer,
-      timestamp + originalName,
-      Array.isArray(categories) ? categories : [categories]
-    );
+    // const spRes = await uploadToSharePoint(
+    //   accessToken,
+    //   siteId,
+    //   driveId,
+    //   folder,
+    //   file.buffer,
+    //   timestamp + originalName,
+    //   Array.isArray(categories) ? categories : [categories]
+    // );
 
     // === 3) SQL-д ===
     const categoriesString = Array.isArray(categories) ? categories.join(',') : categories;
     await sql.connect(sqlConfig);
     await sql.query`
-      INSERT INTO FileMetadata (userId, category, filename, blobPath, uploadedAt, status, sharepointFileId)
-      VALUES (${companyName}, ${categoriesString}, ${originalName}, ${blobName}, GETDATE(), N'Хүлээгдэж буй', ${spRes.id})
+      INSERT INTO FileMetadata (userId, category, filename, blobPath, uploadedAt, status)
+      VALUES (${companyName}, ${categoriesString}, ${originalName}, ${blobName}, GETDATE(), N'Хүлээгдэж буй')
     `;
     for (const cat of categoriesArr) {
       await sql.query`
@@ -97,8 +97,7 @@ exports.uploadFile = async (req, res) => {
 
     res.json({
       message: 'Uploaded to Blob + SharePoint + SQL',
-      blobPath: blobName,
-      sharepointId: spRes.id,
+      blobPath: blobName
     });
   } catch (err) {
     console.error(err?.response?.data || err);
