@@ -26,14 +26,26 @@ const sqlConfig = {
 
 exports.uploadFile = async (req, res) => {
   try {
-    let { categories } = req.body;
+    let { categories, filetypes } = req.body;
     const { companyName } = req.user;
+    console.log("c",categories);
+    console.log("f",filetypes);
     const file = req.file;
     const decodedName = Buffer.from(file.originalname, 'latin1').toString('utf8');
     const categoriesArr = Array.isArray(categories) ? categories : [categories];
     const originalName = decodedName;
     const timestamp = new Date().toISOString().replace(/[-:.]/g, '').slice(0, 15);
     const blobName = `${companyName}/${timestamp}-${originalName}`;
+
+    if (Array.isArray(filetypes)) {
+      // SQL-д хадгалах гэж нэг string болгоно
+      // Харин SharePoint руу массив байдлаар өгнө
+      // (доор массив хэлбэрээр явуулж байгаа)
+    } else if (typeof filetypes === 'string') {
+      // OK
+    } else {
+      return res.status(400).json({ error: 'filetypes is required' });
+    }
 
     if (Array.isArray(categories)) {
       // SQL-д хадгалах гэж нэг string болгоно
@@ -81,11 +93,12 @@ exports.uploadFile = async (req, res) => {
     // );
 
     // === 3) SQL-д ===
-    const categoriesString = Array.isArray(categories) ? categories.join(',') : categories;
+    const categoriesString = Array.isArray(categories) ? categories.join(';') : categories;
+    const filetypesting = Array.isArray(filetypes)  ? [...new Set(filetypes)].join(';') : filetypes;
     await sql.connect(sqlConfig);
     await sql.query`
-      INSERT INTO FileMetadata (userId, category, filename, blobPath, uploadedAt, status)
-      VALUES (${companyName}, ${categoriesString}, ${originalName}, ${blobName}, GETDATE(), N'Хүлээгдэж буй')
+      INSERT INTO FileMetadata (userId, category, filetype, filename, blobPath, uploadedAt, status)
+      VALUES (${companyName}, ${categoriesString}, ${filetypesting}, ${originalName}, ${blobName}, GETDATE(), N'Хүлээгдэж буй')
     `;
     for (const cat of categoriesArr) {
       await sql.query`

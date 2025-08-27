@@ -16,7 +16,7 @@ exports.listCategories = async (req, res) => {
     try {
         await sql.connect(sqlConfig);
         const result = await sql.query`
-            SELECT id , CategoryName, status, comment FROM MaterialList WHERE companyName = ${companyName}
+            SELECT id ,filetype, CategoryName, status, comment FROM MaterialList WHERE companyName = ${companyName}
         `;
 
         let rows = result.recordset;
