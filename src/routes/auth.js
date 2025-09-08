@@ -57,6 +57,24 @@ router.post('/login', async (req, res) => {
   }
 });
 
+router.post('/check', async (req, res) => {
+  const { username } = req.body;
+  if (!username ) return res.status(400).json({ error: 'username, password required' });
+  try {
+    await sql.connect(sqlConfig);
+    const result = await sql.query`SELECT * FROM Users WHERE username=${username}`;
+    if (!result.recordset.length) return res.status(401).json({ error: "User Not found" });
+
+    const user = result.recordset[0];
+
+    // JWT үүсгэнэ
+   
+    res.json({ res: "user found" });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // --------------------------
 // JWT Middleware
 // --------------------------
