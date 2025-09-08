@@ -63,7 +63,7 @@ router.post('/check', async (req, res) => {
   try {
     await sql.connect(sqlConfig);
     const result = await sql.query`SELECT * FROM Users WHERE username=${username}`;
-    if (!result.recordset.length) return res.status(401).json({ error: "User Not found" });
+    if (!result.recordset.length) return res.json({ res: "User Not found" });
 
     const user = result.recordset[0];
 
