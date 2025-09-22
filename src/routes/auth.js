@@ -1,83 +1,133 @@
+// routes/auth.js
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const sql = require('mssql');
 
-// SQL config-г import хийнэ
-const sqlConfig = require('../config/sqlConfig'); // Жишээ, өөрийн config файлаас
+const sqlConfig = require('../config/sqlConfig');
 
-const JWT_SECRET = process.env.JWT_SECRET || "secret-key"; // .env дээр хадгал!
+const JWT_SECRET = process.env.JWT_SECRET || "secret-key"; // .env-д байрлуул
 
-// --------------------------
-// БҮРТГЭЛ
-// --------------------------
+// ✔️ Жижиг туслах функцууд
+const normalize = (s) => (typeof s === 'string' ? s.trim() : s);
+
+// ==========================
+// БҮРТГЭЛ (REGISTER)
+// ==========================
 router.post('/register', async (req, res) => {
-  const { username, password, email, companyName, companyId } = req.body;
-  if (!username || !password || !companyName || !companyId) {
-    return res.status(400).json({ error: 'username, password, companyName, companyId are required' });
-  }
-  const hashed = await bcrypt.hash(password, 10);
   try {
+    let { username, password, email, companyName, companyId } = req.body;
+
+    username = normalize(username);
+    password = normalize(password);
+    email = normalize(email);
+    companyName = normalize(companyName);
+    companyId = normalize(companyId);
+
+    if (!username || !password || !companyName || !companyId) {
+      return res.status(400).json({ error: 'username, password, companyName, companyId are required' });
+    }
+
+    const hashed = await bcrypt.hash(password, 10);
+
     await sql.connect(sqlConfig);
+
+    // ⚠️ Нэг компанид ижил username давхцахгүй байхыг шалгана
+    const dup = await sql.query`
+      SELECT TOP 1 id FROM Users WHERE companyId = ${companyId} AND username = ${username}
+    `;
+    if (dup.recordset.length) {
+      return res.status(409).json({ error: 'This username already exists in the company.' });
+    }
+
     await sql.query`
       INSERT INTO Users (username, password, email, companyName, companyId)
       VALUES (${username}, ${hashed}, ${email || null}, ${companyName}, ${companyId})
     `;
+
     res.json({ message: "User registered" });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
 });
 
-// --------------------------
-// НЭВТРЭЛТ (LOGIN)
-// --------------------------
+// ==========================
+// НЭВТРЭЛТ (LOGIN) — companyId шаардана
+// ==========================
 router.post('/login', async (req, res) => {
-  const { username, password } = req.body;
-  if (!username || !password) return res.status(400).json({ error: 'username, password required' });
   try {
+    let { username, password, companyId } = req.body;
+
+    username = normalize(username);
+    password = normalize(password);
+    companyId = normalize(companyId);
+
+    if (!username || !password || !companyId) {
+      return res.status(400).json({ error: 'username, password, companyId are required' });
+    }
+
     await sql.connect(sqlConfig);
-    const result = await sql.query`SELECT * FROM Users WHERE username=${username}`;
-    if (!result.recordset.length) return res.status(401).json({ error: "Invalid credentials" });
+
+    // ✅ Тухайн компанийн хүрээнд хэрэглэгчийг хайна
+    const result = await sql.query`
+      SELECT TOP 1 * FROM Users WHERE username = ${username} AND companyId = ${companyId}
+    `;
+    if (!result.recordset.length) {
+      // Аль нэг буруу үед generic алдаа буцаана
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
 
     const user = result.recordset[0];
+
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) return res.status(401).json({ error: "Invalid credentials" });
 
-    // JWT үүсгэнэ
     const token = jwt.sign(
-      { userId: user.id, username: user.username, companyName: user.companyName },
+      {
+        userId: user.id,
+        username: user.username,
+        companyName: user.companyName,
+        companyId: user.companyId, // ⬅️ JWT-д companyId багтана
+      },
       JWT_SECRET,
       { expiresIn: "2h" }
     );
-    res.json({ token });
+
+    res.json({ token, user: { username: user.username, companyId: user.companyId } });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
+// ==========================
+// ХЭРЭГЛЭГЧ БАЙГАА ЭСЭХ (Optional helper)
+// ==========================
 router.post('/check', async (req, res) => {
-  const { username } = req.body;
-  if (!username ) return res.status(400).json({ error: 'username, password required' });
   try {
+    let { username, companyId } = req.body;
+    username = normalize(username);
+    companyId = normalize(companyId);
+
+    if (!username || !companyId) {
+      return res.status(400).json({ error: 'username, companyId are required' });
+    }
+
     await sql.connect(sqlConfig);
-    const result = await sql.query`SELECT * FROM Users WHERE username=${username}`;
+    const result = await sql.query`
+      SELECT TOP 1 id FROM Users WHERE username=${username} AND companyId=${companyId}
+    `;
     if (!result.recordset.length) return res.json({ res: "User Not found" });
 
-    const user = result.recordset[0];
-
-    // JWT үүсгэнэ
-   
-    res.json({ res: "user found" });
+    return res.json({ res: "User found" });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
 
-// --------------------------
+// ==========================
 // JWT Middleware
-// --------------------------
+// ==========================
 function authMiddleware(req, res, next) {
   const auth = req.headers.authorization;
   if (!auth) return res.status(401).json({ error: "No token" });
@@ -91,15 +141,19 @@ function authMiddleware(req, res, next) {
   }
 }
 
-// --------------------------
+// ==========================
 // Хэрэглэгчийн мэдээлэл авах
-// --------------------------
+// ==========================
 router.get('/me', authMiddleware, async (req, res) => {
-  await sql.connect(sqlConfig);
-  const result = await sql.query`
-    SELECT id, username, email, companyName, companyId, createdAt FROM Users WHERE id=${req.user.userId}
-  `;
-  res.json(result.recordset[0]);
+  try {
+    await sql.connect(sqlConfig);
+    const result = await sql.query`
+      SELECT id, username, email, companyName, companyId, createdAt FROM Users WHERE id=${req.user.userId}
+    `;
+    res.json(result.recordset[0] || null);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 module.exports = router;
