@@ -17,16 +17,17 @@ const normalize = (s) => (typeof s === 'string' ? s.trim() : s);
 // ==========================
 router.post('/register', async (req, res) => {
   try {
-    let { username, password, email, companyName, companyId } = req.body;
+    let { username, password, email, companyName, companyId, projectName } = req.body;
 
     username = normalize(username);
     password = normalize(password);
     email = normalize(email);
     companyName = normalize(companyName);
     companyId = normalize(companyId);
+    projectName = normalize(projectName);
 
-    if (!username || !password || !companyName || !companyId) {
-      return res.status(400).json({ error: 'username, password, companyName, companyId are required' });
+    if (!username || !password || !companyName || !companyId || !projectName) {
+      return res.status(400).json({ error: 'username, password, companyName, companyId, projectName are required' });
     }
 
     const hashed = await bcrypt.hash(password, 10);
@@ -42,8 +43,8 @@ router.post('/register', async (req, res) => {
     }
 
     await sql.query`
-      INSERT INTO Users (username, password, email, companyName, companyId)
-      VALUES (${username}, ${hashed}, ${email || null}, ${companyName}, ${companyId})
+      INSERT INTO Users (username, password, email, companyName, companyId, projectName)
+      VALUES (${username}, ${hashed}, ${email || null}, ${companyName}, ${companyId}, ${projectName})
     `;
 
     res.json({ message: "User registered" });
@@ -79,6 +80,7 @@ router.post('/login', async (req, res) => {
     }
 
     const user = result.recordset[0];
+    console.log(user);
 
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) return res.status(401).json({ error: "Invalid credentials" });
@@ -89,12 +91,13 @@ router.post('/login', async (req, res) => {
         username: user.username,
         companyName: user.companyName,
         companyId: user.companyId, // ⬅️ JWT-д companyId багтана
+        projectName: user.projectName
       },
       JWT_SECRET,
       { expiresIn: "2h" }
     );
 
-    res.json({ token, user: { username: user.username, companyId: user.companyId } });
+    res.json({ token, user: { username: user.username, projectName: user.projectName, companyId: user.companyId } });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -105,17 +108,18 @@ router.post('/login', async (req, res) => {
 // ==========================
 router.post('/check', async (req, res) => {
   try {
-    let { username, companyId } = req.body;
+    let { username, companyId, projectName } = req.body;
     username = normalize(username);
     companyId = normalize(companyId);
+    projectName = normalize(projectName)
 
-    if (!username || !companyId) {
-      return res.status(400).json({ error: 'username, companyId are required' });
+    if (!username || !companyId || !projectName) {
+      return res.status(400).json({ error: 'username, companyId, projectName are required' });
     }
 
     await sql.connect(sqlConfig);
     const result = await sql.query`
-      SELECT TOP 1 id FROM Users WHERE username=${username} AND companyId=${companyId}
+      SELECT TOP 1 id FROM Users WHERE username=${username} AND companyId=${companyId} AND projectName=${projectName}
     `;
     if (!result.recordset.length) return res.json({ res: "User Not found" });
 
