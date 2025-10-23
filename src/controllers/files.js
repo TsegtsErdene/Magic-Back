@@ -27,10 +27,7 @@ const sqlConfig = {
 exports.uploadFile = async (req, res) => {
   try {
     let { categories, filetypes, projects } = req.body;
-    const { companyName } = req.user;
-    console.log("c",categories);
-    console.log("f",filetypes);
-    console.log("p",projects);
+    const { companyName, username } = req.user;
     const file = req.file;
     const decodedName = Buffer.from(file.originalname, 'latin1').toString('utf8');
     const categoriesArr = Array.isArray(categories) ? categories : [categories];
@@ -99,8 +96,8 @@ exports.uploadFile = async (req, res) => {
     const projectstring = Array.isArray(projects)  ? [...new Set(projects)].join(';') : projects;
     await sql.connect(sqlConfig);
     await sql.query`
-      INSERT INTO FileMetadata (userId, category, projectID, filetype, filename, blobPath, uploadedAt, status)
-      VALUES (${companyName}, ${categoriesString}, ${projectstring}, ${filetypesting}, ${originalName}, ${blobName}, GETDATE(), N'Хүлээгдэж буй')
+      INSERT INTO FileMetadata (userId, category, projectID, filetype, filename, blobPath, uploadedAt, status, username)
+      VALUES (${companyName}, ${categoriesString}, ${projectstring}, ${filetypesting}, ${originalName}, ${blobName}, GETDATE(), N'Хүлээгдэж буй', ${username})
     `;
     for (const cat of categoriesArr) {
       await sql.query`
@@ -125,7 +122,7 @@ exports.listFiles = async (req, res) => {
     const { companyName } = req.user;
     await sql.connect(sqlConfig);
     const result = await sql.query`
-      SELECT id, category, filename, blobPath, uploadedAt, status, comment
+      SELECT id, category, filename, blobPath, uploadedAt, status, comment, username
       FROM FileMetadata
       WHERE userId = ${companyName}
     `;
