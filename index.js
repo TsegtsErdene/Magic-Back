@@ -6,6 +6,7 @@ dotenv.config();
 const fileRoutes = require('./src/routes/files');
 const authRoutes = require('./src/routes/auth');
 const categoriesRoutes = require('./src/routes/categories');
+const templateRoutes = require('./src/routes/templates');
 
 const app = express();
 app.use(cors());
@@ -17,6 +18,7 @@ app.use(express.urlencoded({ extended: true, encoding: 'utf-8' }));
 app.use('/api/files', fileRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/categories', categoriesRoutes);
+app.use('/api/templates',templateRoutes);
 app.use("/", (req, res) => {
     res.status(200).send("ok");
   });
