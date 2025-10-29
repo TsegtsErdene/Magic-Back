@@ -12,6 +12,17 @@ const JWT_SECRET = process.env.JWT_SECRET || "secret-key"; // .env-д байрл
 // ✔️ Жижиг туслах функцууд
 const normalize = (s) => (typeof s === 'string' ? s.trim() : s);
 
+// Нууц үгийн энгийн бодлого (шаардвал чангалаарай)
+function validatePassword(pw = "") {
+  // Мин 8 тэмдэгт, том/жижиг үсэг, тоо, тусгай тэмдэгтээс дор хаяж 3-ыг агуулна
+  const rules = [
+    /[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/
+  ];
+  const passed = rules.reduce((acc, r) => acc + (r.test(pw) ? 1 : 0), 0);
+  return typeof pw === 'string' && pw.length >= 8 && passed >= 3;
+}
+
+
 // ==========================
 // БҮРТГЭЛ (REGISTER)
 // ==========================
@@ -56,6 +67,7 @@ router.post('/register', async (req, res) => {
 // ==========================
 // НЭВТРЭЛТ (LOGIN) — companyId шаардана
 // ==========================
+// LOGIN
 router.post('/login', async (req, res) => {
   try {
     let { username, password, companyId } = req.body;
@@ -70,38 +82,61 @@ router.post('/login', async (req, res) => {
 
     await sql.connect(sqlConfig);
 
-    // ✅ Тухайн компанийн хүрээнд хэрэглэгчийг хайна
     const result = await sql.query`
       SELECT TOP 1 * FROM Users WHERE username = ${username} AND companyId = ${companyId}
     `;
     if (!result.recordset.length) {
-      // Аль нэг буруу үед generic алдаа буцаана
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
     const user = result.recordset[0];
-    console.log(user);
-
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) return res.status(401).json({ error: "Invalid credentials" });
 
+    // ✅ Хэрэв анхны нэвтрэлт буюу солиулах шаардлагатай бол
+    if (user.mustChangePassword) {
+      // Зөвхөн "нууц үг солих" ажиллагаанд зориулагдсан богино хугацаатай token
+      const changeToken = jwt.sign(
+        {
+          userId: user.id,
+          username: user.username,
+          companyId: user.companyId,
+          scope: 'password_change_only'
+        },
+        JWT_SECRET,
+        { expiresIn: '15m' }
+      );
+
+      // Front-end энэ үед /password/change рүү чиглүүлнэ
+      return res.status(200).json({
+        requiresPasswordChange: true,
+        changeToken,
+        user: { username: user.username, companyId: user.companyId, projectName: user.projectName }
+      });
+    }
+
+    // Энгийн тохиолдолд бүрэн эрхтэй token
     const token = jwt.sign(
       {
         userId: user.id,
         username: user.username,
         companyName: user.companyName,
-        companyId: user.companyId, // ⬅️ JWT-д companyId багтана
+        companyId: user.companyId,
         projectName: user.projectName
       },
       JWT_SECRET,
       { expiresIn: "2h" }
     );
 
-    res.json({ token, user: { username: user.username, projectName: user.projectName, companyId: user.companyId } });
+    res.json({
+      token,
+      user: { username: user.username, projectName: user.projectName, companyId: user.companyId }
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
+
 
 // ==========================
 // ХЭРЭГЛЭГЧ БАЙГАА ЭСЭХ (Optional helper)
@@ -129,6 +164,68 @@ router.post('/check', async (req, res) => {
   }
 });
 
+// Нууц үг солих — зөвхөн changeToken (scope=password_change_only) ашиглана
+router.post('/password/change', async (req, res) => {
+  try {
+    const auth = req.headers.authorization;
+    if (!auth) return res.status(401).json({ error: "No token" });
+    const token = auth.split(" ")[1];
+
+    let payload;
+    try {
+      payload = jwt.verify(token, JWT_SECRET);
+    } catch {
+      return res.status(401).json({ error: "Invalid or expired token" });
+    }
+
+    if (payload.scope !== 'password_change_only') {
+      return res.status(403).json({ error: "Token scope not allowed for password change" });
+    }
+
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: "currentPassword and newPassword are required" });
+    }
+    if (!validatePassword(newPassword)) {
+      return res.status(400).json({ error: "Weak password. Use at least 8 chars and mix of cases/numbers/symbols." });
+    }
+
+    await sql.connect(sqlConfig);
+
+    const q = await sql.query`
+      SELECT TOP 1 id, password, mustChangePassword FROM Users WHERE id=${payload.userId} AND companyId=${payload.companyId}
+    `;
+    if (!q.recordset.length) return res.status(404).json({ error: "User not found" });
+
+    const user = q.recordset[0];
+
+    // Одоогийн нууц үг таарч буй эсэхийг шалгах
+    const ok = await bcrypt.compare(currentPassword, user.password);
+    if (!ok) return res.status(401).json({ error: "Current password is incorrect" });
+
+    // Хэрэв аль хэдийн солиод mustChangePassword=0 болсон бол давхар хамгаалалт
+    if (user.mustChangePassword === false || user.mustChangePassword === 0) {
+      return res.status(409).json({ error: "Password already changed" });
+    }
+
+    const hashed = await bcrypt.hash(newPassword, 10);
+
+    await sql.query`
+      UPDATE Users
+      SET password = ${hashed},
+          mustChangePassword = 0,
+          passwordChangedAt = SYSUTCDATETIME()
+      WHERE id = ${payload.userId}
+    `;
+
+    // ✅ Дараагийн алхам: энгийн нэвтрэлт хийх (шинэ нууцтайгаа /login руу)
+    return res.json({ message: "Password changed. Please login again." });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+
 // ==========================
 // JWT Middleware
 // ==========================
@@ -152,12 +249,12 @@ router.get('/me', authMiddleware, async (req, res) => {
   try {
     await sql.connect(sqlConfig);
     const result = await sql.query`
-      SELECT id, username, email, companyName, companyId, createdAt FROM Users WHERE id=${req.user.userId}
+      SELECT id, username, email, companyName, companyId, createdAt, mustChangePassword
+      FROM Users WHERE id=${req.user.userId}
     `;
     res.json(result.recordset[0] || null);
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
-
 module.exports = router;
