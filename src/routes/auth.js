@@ -163,6 +163,72 @@ router.post('/check', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+router.post('/admin/reset-password', async (req, res) => {
+  try {
+    // Authentication: either admin JWT with payload.isAdmin === true
+    // or a static admin key in header x-admin-key
+    const adminKeyHeader = req.headers['x-admin-key'];
+    const adminKeyOk = adminKeyHeader && process.env.ADMIN_API_KEY && adminKeyHeader === process.env.ADMIN_API_KEY;
+
+    // try JWT auth if provided
+    let isAdmin = false;
+    const auth = req.headers.authorization;
+    if (auth) {
+      const token = auth.split(' ')[1];
+      try {
+        const payload = jwt.verify(token, JWT_SECRET);
+        if (payload && payload.isAdmin) isAdmin = true;
+      } catch (e) {
+        // invalid token — ignore, will fallback to admin key
+      }
+    }
+
+    if (!isAdmin && !adminKeyOk) {
+      return res.status(403).json({ error: 'Admin credentials required' });
+    }
+
+    const { userId, username, companyId, tempPassword } = req.body;
+
+    if (!tempPassword || typeof tempPassword !== 'string') {
+      return res.status(400).json({ error: 'tempPassword (string) is required' });
+    }
+
+    await sql.connect(sqlConfig);
+
+    let userQuery;
+    if (userId) {
+      userQuery = await sql.query`SELECT TOP 1 id, username, companyId, email FROM Users WHERE id = ${userId}`;
+    } else if (username && companyId) {
+      userQuery = await sql.query`SELECT TOP 1 id, username, companyId, email FROM Users WHERE username = ${username} AND companyId = ${companyId}`;
+    } else {
+      return res.status(400).json({ error: 'Provide userId OR (username and companyId)' });
+    }
+
+    if (!userQuery.recordset.length) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const user = userQuery.recordset[0];
+
+    // Hash the temp password
+    const hashed = await bcrypt.hash(tempPassword, 10);
+
+    // Update password, set mustChangePassword=1 so user must change on next login
+    await sql.query`
+      UPDATE Users
+      SET password = ${hashed},
+          mustChangePassword = 1,
+          passwordChangedAt = NULL
+      WHERE id = ${user.id}
+    `;
+
+    // Optional: log the admin reset (you may want an audit table; here we just reply)
+    return res.json({ message: 'Temporary password set. Inform the user to login and change their password.' });
+  } catch (e) {
+    console.error('admin reset error', e);
+    res.status(500).json({ error: e.message || 'Server error' });
+  }
+});
 
 // Нууц үг солих — зөвхөн changeToken (scope=password_change_only) ашиглана
 router.post('/password/change', async (req, res) => {
