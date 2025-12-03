@@ -112,7 +112,7 @@ router.post('/login', async (req, res) => {
       return res.status(200).json({
         requiresPasswordChange: true,
         changeToken,
-        user: { username: user.username, companyId: user.companyId, projectName: user.projectName, companyNameMN }
+        user: { username: user.username, companyId: user.companyId, projectName: user.projectName, companyNameMN: user.companyNameMN }
       });
     }
 

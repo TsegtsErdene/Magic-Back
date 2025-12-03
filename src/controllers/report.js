@@ -7,7 +7,8 @@ exports.reportController = async (req, res) => {
   try {
     // хэрэглэгчийн companyName — энэ login-оос ирнэ
     const companyName = req.user?.companyName;
-    const projectNname = req.user?.projectName
+    const companyNameMN = req.user?.companyNameMN;
+    const projectNname = req.user?.projectName;
     console.log(req.user)
     if (!companyName) return res.status(401).json({ error: "Unauthorized (no company name)" });
 
@@ -15,7 +16,7 @@ exports.reportController = async (req, res) => {
     if (!accessToken) return res.status(500).json({ error: "Failed to acquire SharePoint token" });
 
     // Templates/<CompanyName> хавтасны path
-    const folderPath = `/${companyName}/${projectNname}/3. Тайлагнал`;
+    const folderPath = `/${companyNameMN}/${projectNname}/3. Тайлагнал`;
 
     console.log(folderPath)
 
