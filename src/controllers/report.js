@@ -9,7 +9,6 @@ exports.reportController = async (req, res) => {
     const companyName = req.user?.companyName;
     const companyNameMN = req.user?.companyNameMN;
     const projectNname = req.user?.projectName;
-    console.log(req.user)
     if (!companyName) return res.status(401).json({ error: "Unauthorized (no company name)" });
 
     const accessToken = await getSharePointAccessToken();
@@ -18,7 +17,6 @@ exports.reportController = async (req, res) => {
     // Templates/<CompanyName> хавтасны path
     const folderPath = `/${companyNameMN}/${projectNname}/3. Тайлагнал`;
 
-    console.log(folderPath)
 
     const url = `https://graph.microsoft.com/v1.0/sites/${STATIC_SITE_ID}/drives/${PDRIVE_ID}/root:/${encodeURIComponent(
       folderPath
@@ -34,7 +32,6 @@ exports.reportController = async (req, res) => {
     }
 
     const json = await response.json();
-    console.log(json)
 
     const files = (json.value || [])
       .filter((f) => f.file) // зөвхөн файлууд
