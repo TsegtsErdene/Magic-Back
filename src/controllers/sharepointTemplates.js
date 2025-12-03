@@ -6,6 +6,7 @@ const STATIC_TEMPLATE_PATH = "Templates/Template files for Client portal";
 
 exports.listTemplateFiles = async (req, res) => {
   try {
+    console.log(req.user);
     const accessToken = await getSharePointAccessToken();
 
     // Graph API endpoint

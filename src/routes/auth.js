@@ -28,7 +28,7 @@ function validatePassword(pw = "") {
 // ==========================
 router.post('/register', async (req, res) => {
   try {
-    let { username, password, email, companyName, companyId, projectName } = req.body;
+    let { username, password, email, companyName, companyId, projectName, companyNameMN } = req.body;
 
     username = normalize(username);
     password = normalize(password);
@@ -36,9 +36,10 @@ router.post('/register', async (req, res) => {
     companyName = normalize(companyName);
     companyId = normalize(companyId);
     projectName = normalize(projectName);
+    companyNameMN = normalize(companyNameMN)
 
-    if (!username || !password || !companyName || !companyId || !projectName) {
-      return res.status(400).json({ error: 'username, password, companyName, companyId, projectName are required' });
+    if (!username || !password || !companyName || !companyId || !projectName || !companyNameMN) {
+      return res.status(400).json({ error: 'username, password, companyName, companyId, projectName, companyNameMN are required' });
     }
 
     const hashed = await bcrypt.hash(password, 10);
@@ -54,8 +55,8 @@ router.post('/register', async (req, res) => {
     }
 
     await sql.query`
-      INSERT INTO Users (username, password, email, companyName, companyId, projectName)
-      VALUES (${username}, ${hashed}, ${email || null}, ${companyName}, ${companyId}, ${projectName})
+      INSERT INTO Users (username, password, email, companyName, companyId, projectName, companyNameMN)
+      VALUES (${username}, ${hashed}, ${email || null}, ${companyName}, ${companyId}, ${projectName}, ${companyNameMN})
     `;
 
     res.json({ message: "User registered" });
@@ -111,7 +112,7 @@ router.post('/login', async (req, res) => {
       return res.status(200).json({
         requiresPasswordChange: true,
         changeToken,
-        user: { username: user.username, companyId: user.companyId, projectName: user.projectName }
+        user: { username: user.username, companyId: user.companyId, projectName: user.projectName, companyNameMN }
       });
     }
 
@@ -122,7 +123,8 @@ router.post('/login', async (req, res) => {
         username: user.username,
         companyName: user.companyName,
         companyId: user.companyId,
-        projectName: user.projectName
+        projectName: user.projectName,
+        companyNameMN: user.companyNameMN
       },
       JWT_SECRET,
       { expiresIn: "2h" }

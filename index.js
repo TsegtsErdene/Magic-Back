@@ -7,6 +7,7 @@ const fileRoutes = require('./src/routes/files');
 const authRoutes = require('./src/routes/auth');
 const categoriesRoutes = require('./src/routes/categories');
 const templateRoutes = require('./src/routes/templates');
+const reportRoutes = require('./src/routes/report');
 
 const app = express();
 app.use(cors());
@@ -19,6 +20,7 @@ app.use('/api/files', fileRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/categories', categoriesRoutes);
 app.use('/api/templates',templateRoutes);
+app.use('/api/report',reportRoutes);
 app.use("/", (req, res) => {
     res.status(200).send("ok");
   });
