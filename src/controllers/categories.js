@@ -23,7 +23,7 @@ exports.listCategories = async (req, res) => {
 
     if (availableOnly) {
       // uploader-ийн сонголтоос 'Хүлээгдэж буй' (already pending) категориудыг нуух
-        rows = rows.filter(r => ['Илгээгээгүй', 'Цуцалсан'].includes(r.status || ''));
+        rows = rows.filter(r => ['Илгээгээгүй', 'Хүлээгдэж буй','Дутуу','Шаардлага хангаагүй'].includes(r.status || ''));
     }
 
     res.json(rows);
