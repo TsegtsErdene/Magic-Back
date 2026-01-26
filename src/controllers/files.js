@@ -26,15 +26,25 @@ const sqlConfig = {
 
 exports.uploadFile = async (req, res) => {
   try {
-    let { categories, filetypes, projects } = req.body;
-    const { companyName, username } = req.user;
+    let { categories, filetypes } = req.body;
+    const { userGUID, projectGUID } = req.user;
     const file = req.file;
-    const decodedName = Buffer.from(file.originalname, 'latin1').toString('utf8');
-    const categoriesArr = Array.isArray(categories) ? categories : [categories];
-    const originalName = decodedName;
-    const timestamp = new Date().toISOString().replace(/[-:.]/g, '').slice(0, 15);
-    const blobName = `${companyName}/${timestamp}-${originalName}`;
 
+    if (!projectGUID) {
+      return res.status(400).json({ error: "Project not selected" });
+    }
+
+    if (!file) {
+      return res.status(400).json({ error: "File required" });
+    }
+
+    const categoriesArr = Array.isArray(categories) ? categories : [categories];
+    const filetypesArr = Array.isArray(filetypes) ? filetypes : [filetypes];
+
+    const decodedName = Buffer.from(file.originalname, "latin1").toString("utf8");
+    const originalName = decodedName;
+    const timestamp = new Date().toISOString().replace(/[-:.]/g, "");
+    const blobName = `${projectGUID}/${timestamp}-${decodedName}`;
     if (Array.isArray(filetypes)) {
       // SQL-д хадгалах гэж нэг string болгоно
       // Харин SharePoint руу массив байдлаар өгнө
@@ -55,8 +65,8 @@ exports.uploadFile = async (req, res) => {
       return res.status(400).json({ error: 'categories is required' });
     }
 
-    if (!file || !companyName) {
-      return res.status(400).json({ error: 'File, companyName required' });
+    if (!file ) {
+      return res.status(400).json({ error: 'File required' });
     }
 
     // === 1) Azure Blob руу ===
@@ -93,17 +103,17 @@ exports.uploadFile = async (req, res) => {
     // === 3) SQL-д ===
     const categoriesString = Array.isArray(categories) ? categories.join(';') : categories;
     const filetypesting = Array.isArray(filetypes)  ? [...new Set(filetypes)].join(';') : filetypes;
-    const projectstring = Array.isArray(projects)  ? [...new Set(projects)].join(';') : projects;
+    console.log(categoriesString)
     await sql.connect(sqlConfig);
     await sql.query`
-      INSERT INTO FileMetadata (userId, category, projectID, filetype, filename, blobPath, uploadedAt, status, username)
-      VALUES (${companyName}, ${categoriesString}, ${projectstring}, ${filetypesting}, ${originalName}, ${blobName}, GETDATE(), N'Хүлээгдэж буй', ${username})
+      INSERT INTO ReceivedDocuments ( documentName, projectGUID, documentCategory, filename, blobPath, uploadedAt, status, username)
+      VALUES (${categoriesString}, ${projectGUID}, ${filetypesting}, ${originalName}, ${blobName}, GETDATE(), N'Хүлээгдэж буй', ${userGUID})
     `;
     for (const cat of categoriesArr) {
       await sql.query`
-        UPDATE MaterialList
+        UPDATE RequestedDocuments
         SET status = N'Хүлээгдэж буй'
-        WHERE companyName = ${companyName} AND CategoryName = ${cat};
+        WHERE projectGUID = ${projectGUID} AND documentName = ${cat};
     `;
   }
 
