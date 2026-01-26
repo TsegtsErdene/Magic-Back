@@ -28,11 +28,12 @@ function validatePassword(pw = "") {
 // ==========================
 router.post('/register', async (req, res) => {
   try {
-    let { userNameEN, userPassword, userEmail, companyGUID, userGUID, activeStatus, companyGUIDMN } = req.body;
+    let { userNameEN, userPassword, userEmail, companyGUID, userGUID, activeStatus, companyId } = req.body;
 
     userNameEN = normalize(userNameEN);
     userPassword = normalize(userPassword);
     userEmail = normalize(userEmail);
+    companyId = normalize(companyId);
     companyGUID = normalize(companyGUID);
     userGUID = normalize(userGUID);
     activeStatus = normalize(activeStatus);
@@ -52,7 +53,7 @@ router.post('/register', async (req, res) => {
     }
 
     await sql.query`
-      INSERT INTO Users (userNameEN, userPassword, userEmail, companyGUID, userGUID, activeStatus)
+      INSERT INTO Users (userNameEN, userPassword, userEmail, companyGUID, userGUID, activeStatus, companyId)
       VALUES (${userNameEN}, ${hashed}, ${userEmail || null}, ${companyGUID}, ${userGUID}, ${activeStatus})
     `;
 
