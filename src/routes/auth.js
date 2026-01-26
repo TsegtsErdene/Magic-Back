@@ -54,7 +54,7 @@ router.post('/register', async (req, res) => {
 
     await sql.query`
       INSERT INTO Users (userNameEN, userPassword, userEmail, companyGUID, userGUID, activeStatus, companyId)
-      VALUES (${userNameEN}, ${hashed}, ${userEmail || null}, ${companyGUID}, ${userGUID}, ${activeStatus})
+      VALUES (${userNameEN}, ${hashed}, ${userEmail || null}, ${companyGUID}, ${userGUID}, ${activeStatus}, ${companyId || null})
     `;
 
     res.json({ message: "User registered" });
