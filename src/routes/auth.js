@@ -28,35 +28,32 @@ function validatePassword(pw = "") {
 // ==========================
 router.post('/register', async (req, res) => {
   try {
-    let { username, password, email, companyName, companyId, projectName, companyNameMN } = req.body;
+    let { userNameEN, userPassword, userEmail, companyGUID, userGUID, activeStatus, companyGUIDMN } = req.body;
 
-    username = normalize(username);
-    password = normalize(password);
-    email = normalize(email);
-    companyName = normalize(companyName);
-    companyId = normalize(companyId);
-    projectName = normalize(projectName);
-    companyNameMN = normalize(companyNameMN)
+    userNameEN = normalize(userNameEN);
+    userPassword = normalize(userPassword);
+    userEmail = normalize(userEmail);
+    companyGUID = normalize(companyGUID);
+    userGUID = normalize(userGUID);
+    activeStatus = normalize(activeStatus);
 
-    if (!username || !password || !companyName || !companyId || !projectName || !companyNameMN) {
-      return res.status(400).json({ error: 'username, password, companyName, companyId, projectName, companyNameMN are required' });
+    if (!userNameEN || !userPassword || !companyGUID || !userGUID || !activeStatus) {
+      return res.status(400).json({ error: 'userNameEN, userPassword, companyGUID, userGUID, activeStatus are required' });
     }
 
-    const hashed = await bcrypt.hash(password, 10);
-
+    const hashed = await bcrypt.hash(userPassword, 10);
     await sql.connect(sqlConfig);
 
     // ⚠️ Нэг компанид ижил username давхцахгүй байхыг шалгана
     const dup = await sql.query`
-      SELECT TOP 1 id FROM Users WHERE companyId = ${companyId} AND username = ${username}
-    `;
+      SELECT TOP 1 id FROM Users WHERE userEmail=${userEmail} AND companyGUID=${companyGUID}`;
     if (dup.recordset.length) {
       return res.status(409).json({ error: 'This username already exists in the company.' });
     }
 
     await sql.query`
-      INSERT INTO Users (username, password, email, companyName, companyId, projectName, companyNameMN)
-      VALUES (${username}, ${hashed}, ${email || null}, ${companyName}, ${companyId}, ${projectName}, ${companyNameMN})
+      INSERT INTO Users (userNameEN, userPassword, userEmail, companyGUID, userGUID, activeStatus)
+      VALUES (${userNameEN}, ${hashed}, ${userEmail || null}, ${companyGUID}, ${userGUID}, ${activeStatus})
     `;
 
     res.json({ message: "User registered" });
@@ -71,73 +68,103 @@ router.post('/register', async (req, res) => {
 // LOGIN
 router.post('/login', async (req, res) => {
   try {
-    let { username, password, companyId } = req.body;
-
-    username = normalize(username);
+    let { email, password } = req.body;
+    email = normalize(email);
     password = normalize(password);
-    companyId = normalize(companyId);
 
-    if (!username || !password || !companyId) {
-      return res.status(400).json({ error: 'username, password, companyId are required' });
+    if (!email || !password) {
+      return res.status(400).json({ error: 'email and password are required' });
     }
 
     await sql.connect(sqlConfig);
 
-    const result = await sql.query`
-      SELECT TOP 1 * FROM Users WHERE username = ${username} AND companyId = ${companyId}
+    // 1️⃣ User identity
+    const userQ = await sql.query`
+      SELECT TOP 1 userGUID, userEmail, userPassword, mustChangePassword
+      FROM Users
+      WHERE userEmail = ${email}
     `;
-    if (!result.recordset.length) {
-      return res.status(401).json({ error: "Invalid credentials" });
+    if (!userQ.recordset.length) {
+      return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const user = result.recordset[0];
-    const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return res.status(401).json({ error: "Invalid credentials" });
+    const user = userQ.recordset[0];
+    const ok = await bcrypt.compare(password, user.userPassword);
+    if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
 
-    // ✅ Хэрэв анхны нэвтрэлт буюу солиулах шаардлагатай бол
+    // 2️⃣ Password change flow
     if (user.mustChangePassword) {
-      // Зөвхөн "нууц үг солих" ажиллагаанд зориулагдсан богино хугацаатай token
       const changeToken = jwt.sign(
-        {
-          userId: user.id,
-          username: user.username,
-          companyId: user.companyId,
-          scope: 'password_change_only'
-        },
+        { userGUID: user.userGUID, scope: 'password_change_only' },
         JWT_SECRET,
         { expiresIn: '15m' }
       );
 
-      // Front-end энэ үед /password/change рүү чиглүүлнэ
-      return res.status(200).json({
+      return res.json({
         requiresPasswordChange: true,
-        changeToken,
-        user: { username: user.username, companyId: user.companyId, projectName: user.projectName, companyNameMN: user.companyNameMN }
+        changeToken
       });
     }
 
-    // Энгийн тохиолдолд бүрэн эрхтэй token
-    const token = jwt.sign(
-      {
-        userId: user.id,
-        username: user.username,
-        companyName: user.companyName,
-        companyId: user.companyId,
-        projectName: user.projectName,
-        companyNameMN: user.companyNameMN
-      },
-      JWT_SECRET,
-      { expiresIn: "2h" }
-    );
+    // 3️⃣ Companies this user can access
+    const companiesQ = await sql.query`
+      SELECT
+        c.companyGUID,
+        c.companyName,
+        uca.companyRole
+      FROM UserCompanyAccess uca
+      JOIN Companies c ON c.companyGUID = uca.companyGUID
+      WHERE uca.userGUID = ${user.userGUID}
+    `;
 
-    res.json({
-      token,
-      user: { username: user.username, projectName: user.projectName, companyId: user.companyId }
+    return res.json({
+      userGUID: user.userGUID,
+      companies: companiesQ.recordset
     });
+
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
 });
+
+// Company Login
+router.post('/login/company', async (req, res) => {
+  try {
+    const { userGUID, companyGUID } = req.body;
+
+    if (!userGUID || !companyGUID) {
+      return res.status(400).json({ error: 'userGUID and companyGUID required' });
+    }
+
+    await sql.connect(sqlConfig);
+
+    const accessQ = await sql.query`
+      SELECT companyRole
+      FROM UserCompanyAccess
+      WHERE userGUID = ${userGUID}
+        AND companyGUID = ${companyGUID}
+    `;
+    if (!accessQ.recordset.length) {
+      return res.status(403).json({ error: 'No access to this company' });
+    }
+
+    const token = jwt.sign(
+      {
+        userGUID,
+        companyGUID,
+        companyRole: accessQ.recordset[0].companyRole
+      },
+      JWT_SECRET,
+      { expiresIn: '2h' }
+    );
+
+    res.json({ token });
+
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 
 
 // ==========================
@@ -145,19 +172,17 @@ router.post('/login', async (req, res) => {
 // ==========================
 router.post('/check', async (req, res) => {
   try {
-    let { username, companyId, projectName } = req.body;
+    let { username, companyGUID } = req.body;
     username = normalize(username);
-    companyId = normalize(companyId);
-    projectName = normalize(projectName)
+    companyGUID = normalize(companyGUID);
 
-    if (!username || !companyId || !projectName) {
-      return res.status(400).json({ error: 'username, companyId, projectName are required' });
+    if (!username || !companyGUID ) {
+      return res.status(400).json({ error: 'username, companyGUID are required' });
     }
 
     await sql.connect(sqlConfig);
     const result = await sql.query`
-      SELECT TOP 1 id FROM Users WHERE username=${username} AND companyId=${companyId} AND projectName=${projectName}
-    `;
+      SELECT TOP 1 id FROM Users WHERE userEmail=${username} AND companyGUID=${companyGUID}`;
     if (!result.recordset.length) return res.json({ res: "User Not found" });
 
     return res.json({ res: "User found" });
@@ -165,6 +190,92 @@ router.post('/check', async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
+// routes get project
+
+router.get('/projects', authMiddleware, async (req, res) => {
+  try {
+    const {userGUID, companyGUID } = req.user; // JWT-с companyGUID-г авна
+
+    if (!companyGUID) {
+      return res.status(400).json({ error: 'companyGUID not found in token' });
+    }
+
+    await sql.connect(sqlConfig);
+
+    const projects = await sql.query`
+      SELECT projectGUID, projectName
+      FROM Projects
+      WHERE companyGUID = ${companyGUID}
+    `;
+
+      const newToken = jwt.sign(
+        {
+          userGUID,
+          companyGUID,
+          projectGUID: projects.recordset[0].projectGUID, // ⭐ хамгийн чухал
+        },
+        JWT_SECRET,
+        { expiresIn: '2h' }
+      );
+
+    return res.json({
+        data: projects.recordset,
+        token: newToken       // ⭐ шинэ JWT
+      });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch projects' });
+  }
+});
+
+// routes/auth.js
+router.post('/select-project', authMiddleware, async (req, res) => {
+  try {
+    console.log(req)
+    const { projectGUID } = req.body;
+    const { userGUID, companyGUID } = req.user;
+
+    if (!projectGUID) {
+      return res.status(400).json({ error: 'projectGUID is required' });
+    }
+
+    await sql.connect(sqlConfig);
+
+    // 🔐 UserProjectAccess шалгах
+    const access = await sql.query`
+      SELECT accessRole
+      FROM UserProjectAccess
+      WHERE userGUID = ${userGUID}
+        AND projectGUID = ${projectGUID}
+    `;
+
+    if (!access.recordset.length) {
+      return res.status(403).json({ error: 'No access to this project' });
+    }
+
+    const role = access.recordset[0].accessRole;
+
+    // 🆕 ШИНЭ JWT (project орсон)
+    const newToken = jwt.sign(
+      {
+        userGUID,
+        companyGUID,
+        projectGUID,
+        projectRole: role
+      },
+      JWT_SECRET,
+      { expiresIn: '2h' }
+    );
+
+    res.json({ token: newToken });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to select project' });
+  }
+});
+
+
 router.post('/admin/reset-password', async (req, res) => {
   try {
     // Authentication: either admin JWT with payload.isAdmin === true
@@ -293,6 +404,59 @@ router.post('/password/change', async (req, res) => {
   }
 });
 
+
+// ==========================
+// Нууц үг солих (нэвтэрсэн хэрэглэгч)
+// ==========================
+router.post('/change-password', async (req, res) => {
+  try {
+    const auth = req.headers.authorization;
+    if (!auth) return res.status(401).json({ error: "No token" });
+    const token = auth.split(" ")[1];
+
+    let payload;
+    try {
+      payload = jwt.verify(token, JWT_SECRET);
+    } catch {
+      return res.status(401).json({ error: "Invalid or expired token" });
+    }
+
+    const { oldPassword, newPassword } = req.body;
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({ error: "oldPassword and newPassword are required" });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: "Нууц үг хамгийн багадаа 6 тэмдэгт байх ёстой" });
+    }
+
+    await sql.connect(sqlConfig);
+
+    const q = await sql.query`
+      SELECT TOP 1 id, password FROM Users WHERE id=${payload.userId}
+    `;
+    if (!q.recordset.length) return res.status(404).json({ error: "User not found" });
+
+    const user = q.recordset[0];
+
+    // Одоогийн нууц үг таарч буй эсэхийг шалгах
+    const ok = await bcrypt.compare(oldPassword, user.password);
+    if (!ok) return res.status(401).json({ error: "Одоогийн нууц үг буруу байна" });
+
+    const hashed = await bcrypt.hash(newPassword, 10);
+
+    await sql.query`
+      UPDATE Users
+      SET password = ${hashed},
+          passwordChangedAt = SYSUTCDATETIME()
+      WHERE id = ${payload.userId}
+    `;
+
+    return res.json({ message: "Нууц үг амжилттай солигдлоо" });
+  } catch (e) {
+    console.error('change-password error', e);
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // ==========================
 // JWT Middleware

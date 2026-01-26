@@ -9,14 +9,16 @@ const sqlConfig = require('../config/sqlConfig'); // Жишээ, өөрийн co
 
 
 exports.listCategories = async (req, res) => {
-    const { companyName } = req.user;
+    const { projectGUID } = req.user;
     const availableOnly = req.query.availableOnly === '1'; // uploader-ийн сонголт
-    if (!companyName) return res.status(400).json({ error: "companyName required" });
+    if (!projectGUID) {
+      return res.status(400).json({ error: 'projectGUID required in token' });
+    }
     // Жишээ: SQL-ээс уншина
     try {
         await sql.connect(sqlConfig);
         const result = await sql.query`
-            SELECT id ,filetype, CategoryName, projectID, status, comment FROM MaterialList WHERE companyName = ${companyName}
+            SELECT requestDocID ,documentName, documentCategory, projectGUID, status, comment FROM RequestedDocuments WHERE projectGUID = ${projectGUID}
         `;
 
         let rows = result.recordset;
@@ -25,8 +27,14 @@ exports.listCategories = async (req, res) => {
       // uploader-ийн сонголтоос 'Хүлээгдэж буй' (already pending) категориудыг нуух
         rows = rows.filter(r => ['Илгээгээгүй', 'Хүлээгдэж буй','Дутуу','Шаардлага хангаагүй'].includes(r.status || ''));
     }
-
-    res.json(rows);
+    res.json(rows.map(p => ({
+      id: p.requestDocID,
+      filetype: p.documentName || '',
+      CategoryName: p.documentCategory || '',
+      projectID: p.projectGUID,
+      status: p.status,
+      comment: p.comment
+    })));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch categories', details: err.message });

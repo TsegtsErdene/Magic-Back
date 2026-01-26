@@ -2,17 +2,22 @@ const { getSharePointAccessToken } = require("./msgraphAuth");
 
 const STATIC_SITE_ID = process.env.SHAREPOINT_TEMPLATE_SITE_ID; // AuditProjects site
 const STATIC_DRIVE_ID = process.env.SHAREPOINT_TEMPLATE_DRIVE_ID; // Shared Documents drive
-const STATIC_TEMPLATE_PATH = "Templates/Template files for Client portal";
+const STATIC_TEMPLATE_PATH = process.env.SHAREPOINT_TEMPLATE_PATH || "";
 
 exports.listTemplateFiles = async (req, res) => {
   try {
     console.log(req.user);
     const accessToken = await getSharePointAccessToken();
 
-    // Graph API endpoint
-    const url = `https://graph.microsoft.com/v1.0/sites/${STATIC_SITE_ID}/drives/${STATIC_DRIVE_ID}/root:/${encodeURIComponent(
-      STATIC_TEMPLATE_PATH
-    )}:/children`;
+    // Graph API endpoint - if path is empty, use root/children
+    let url;
+    if (STATIC_TEMPLATE_PATH && STATIC_TEMPLATE_PATH.trim() !== "") {
+      url = `https://graph.microsoft.com/v1.0/sites/${STATIC_SITE_ID}/drives/${STATIC_DRIVE_ID}/root:/${encodeURIComponent(
+        STATIC_TEMPLATE_PATH
+      )}:/children`;
+    } else {
+      url = `https://graph.microsoft.com/v1.0/sites/${STATIC_SITE_ID}/drives/${STATIC_DRIVE_ID}/root/children`;
+    }
 
     const response = await fetch(url, {
       headers: { Authorization: `Bearer ${accessToken}` },

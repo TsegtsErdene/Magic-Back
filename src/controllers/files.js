@@ -119,18 +119,42 @@ exports.uploadFile = async (req, res) => {
 
 exports.listFiles = async (req, res) => {
   try {
-    const { companyName } = req.user;
-    await sql.connect(sqlConfig);
-    const result = await sql.query`
-      SELECT id, category, filename, blobPath, uploadedAt, status, comment, username
-      FROM FileMetadata
-      WHERE userId = ${companyName}
-    `;
-    res.json(result.recordset);
+  const { projectGUID } = req.user;
+
+  await sql.connect(sqlConfig);
+
+  const result = await sql.query`
+    SELECT
+      receiveNo,
+      documentName,
+      documentCategory,
+      projectGUID,
+      filename,
+      blobPath,
+      uploadedAt,
+      status,
+      comment,
+      username
+    FROM ReceivedDocuments
+    WHERE projectGUID = ${projectGUID}
+    ORDER BY uploadedAt DESC
+  `;
+   res.json(result.recordset.map(p => ({
+      id: p.receiveNo,
+      category: p.documentName || '',
+      filename: p.filename || '',
+      status: p.status,
+      blobPath: p.blobPath,
+      uploadedAt: p.uploadedAt,
+      comment: p.comment,
+      username: p.username
+    })));
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch files' });
   }
 };
+
 
 exports.getFileUrl = async (req, res) => {
   try {
@@ -157,6 +181,45 @@ exports.getFileUrl = async (req, res) => {
 
     const url = `${blobClient.url}?${sasToken}`;
     res.json({ url });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// Хуучин файлуудыг төсөлтэй холбох
+exports.assignProjectToFiles = async (req, res) => {
+  try {
+    const { companyName } = req.user;
+    const { projectId, fileIds } = req.body;
+
+    if (!projectId) {
+      return res.status(400).json({ error: 'projectId is required' });
+    }
+
+    await sql.connect(sqlConfig);
+
+    let result;
+    if (fileIds && Array.isArray(fileIds) && fileIds.length > 0) {
+      // Тодорхой файлуудыг шинэчлэх
+      const idList = fileIds.join(',');
+      result = await sql.query`
+        UPDATE FileMetadata
+        SET projectID = ${projectId}
+        WHERE userId = ${companyName} AND id IN (${idList})
+      `;
+    } else {
+      // projectID хоосон бүх файлыг шинэчлэх
+      result = await sql.query`
+        UPDATE FileMetadata
+        SET projectID = ${projectId}
+        WHERE userId = ${companyName} AND (projectID IS NULL OR projectID = '')
+      `;
+    }
+
+    res.json({
+      message: 'Files updated successfully',
+      rowsAffected: result.rowsAffected[0]
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

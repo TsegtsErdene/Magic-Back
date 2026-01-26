@@ -9,5 +9,6 @@ const filesController = require('../controllers/files');
 router.post('/upload', authMiddleware, upload.single('file'), filesController.uploadFile);
 router.get('/', authMiddleware, filesController.listFiles);
 router.get('/url', filesController.getFileUrl);
+router.post('/assign-project', authMiddleware, filesController.assignProjectToFiles);
 
 module.exports = router;
