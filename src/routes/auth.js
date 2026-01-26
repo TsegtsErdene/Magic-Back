@@ -373,14 +373,14 @@ router.post('/password/change', async (req, res) => {
     await sql.connect(sqlConfig);
 
     const q = await sql.query`
-      SELECT TOP 1 id, password, mustChangePassword FROM Users WHERE id=${payload.userId} AND companyId=${payload.companyId}
+      SELECT TOP 1 id, userPassword, mustChangePassword FROM Users WHERE id=${payload.userGUID}
     `;
     if (!q.recordset.length) return res.status(404).json({ error: "User not found" });
 
     const user = q.recordset[0];
 
     // Одоогийн нууц үг таарч буй эсэхийг шалгах
-    const ok = await bcrypt.compare(currentPassword, user.password);
+    const ok = await bcrypt.compare(currentPassword, user.userPassword);
     if (!ok) return res.status(401).json({ error: "Current password is incorrect" });
 
     // Хэрэв аль хэдийн солиод mustChangePassword=0 болсон бол давхар хамгаалалт
@@ -392,10 +392,10 @@ router.post('/password/change', async (req, res) => {
 
     await sql.query`
       UPDATE Users
-      SET password = ${hashed},
+      SET userPassword = ${hashed},
           mustChangePassword = 0,
           passwordChangedAt = SYSUTCDATETIME()
-      WHERE id = ${payload.userId}
+      WHERE userGUID = ${payload.userGUID}
     `;
 
     // ✅ Дараагийн алхам: энгийн нэвтрэлт хийх (шинэ нууцтайгаа /login руу)
