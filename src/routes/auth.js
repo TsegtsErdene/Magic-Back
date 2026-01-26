@@ -57,6 +57,11 @@ router.post('/register', async (req, res) => {
       VALUES (${userNameEN}, ${hashed}, ${userEmail || null}, ${companyGUID}, ${userGUID}, ${activeStatus}, ${companyId || null})
     `;
 
+     await sql.query`
+      INSERT INTO UserCompanyAccess (userGUID, companyGUID, companyRole)
+      VALUES (${userGUID}, ${companyGUID}, "Member")
+    `;
+
     res.json({ message: "User registered" });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -347,6 +352,7 @@ router.post('/admin/reset-password', async (req, res) => {
 // Нууц үг солих — зөвхөн changeToken (scope=password_change_only) ашиглана
 router.post('/password/change', async (req, res) => {
   try {
+    
     const auth = req.headers.authorization;
     if (!auth) return res.status(401).json({ error: "No token" });
     const token = auth.split(" ")[1];
@@ -373,7 +379,7 @@ router.post('/password/change', async (req, res) => {
     await sql.connect(sqlConfig);
 
     const q = await sql.query`
-      SELECT TOP 1 id, userPassword, mustChangePassword FROM Users WHERE id=${payload.userGUID}
+      SELECT TOP 1 id, userPassword, mustChangePassword FROM Users WHERE userGUID=${payload.userGUID}
     `;
     if (!q.recordset.length) return res.status(404).json({ error: "User not found" });
 
