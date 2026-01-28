@@ -307,7 +307,7 @@ router.post('/admin/reset-password', async (req, res) => {
       return res.status(403).json({ error: 'Admin credentials required' });
     }
 
-    const { userGUID, companyGUID, tempPassword } = req.body;
+    const { userGUID, tempPassword } = req.body;
 
     if (!tempPassword || typeof tempPassword !== 'string') {
       return res.status(400).json({ error: 'tempPassword (string) is required' });
@@ -338,7 +338,7 @@ router.post('/admin/reset-password', async (req, res) => {
       SET userPassword = ${hashed},
           mustChangePassword = 1,
           passwordChangedAt = NULL
-      WHERE id = ${user.id}
+      WHERE userGUID = ${user.userGUID}
     `;
 
     // Optional: log the admin reset (you may want an audit table; here we just reply)
