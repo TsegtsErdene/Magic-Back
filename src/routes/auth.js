@@ -238,9 +238,10 @@ router.get('/projects', authMiddleware, async (req, res) => {
 // routes/auth.js
 router.post('/select-project', authMiddleware, async (req, res) => {
   try {
-    console.log(req)
     const { projectGUID } = req.body;
     const { userGUID, companyGUID } = req.user;
+
+    console.log(projectGUID,userGUID,companyGUID);
 
     if (!projectGUID) {
       return res.status(400).json({ error: 'projectGUID is required' });
@@ -306,7 +307,7 @@ router.post('/admin/reset-password', async (req, res) => {
       return res.status(403).json({ error: 'Admin credentials required' });
     }
 
-    const { userId, username, companyId, tempPassword } = req.body;
+    const { userGUID, companyGUID, tempPassword } = req.body;
 
     if (!tempPassword || typeof tempPassword !== 'string') {
       return res.status(400).json({ error: 'tempPassword (string) is required' });
@@ -315,11 +316,10 @@ router.post('/admin/reset-password', async (req, res) => {
     await sql.connect(sqlConfig);
 
     let userQuery;
-    if (userId) {
-      userQuery = await sql.query`SELECT TOP 1 id, username, companyId, email FROM Users WHERE id = ${userId}`;
-    } else if (username && companyId) {
-      userQuery = await sql.query`SELECT TOP 1 id, username, companyId, email FROM Users WHERE username = ${username} AND companyId = ${companyId}`;
-    } else {
+    if (userGUID) {
+      userQuery = await sql.query`SELECT TOP 1 userNameEN, companyId, userEmail FROM Users WHERE userGUID = ${userGUID}`;
+    }
+    else {
       return res.status(400).json({ error: 'Provide userId OR (username and companyId)' });
     }
 
@@ -335,7 +335,7 @@ router.post('/admin/reset-password', async (req, res) => {
     // Update password, set mustChangePassword=1 so user must change on next login
     await sql.query`
       UPDATE Users
-      SET password = ${hashed},
+      SET userPassword = ${hashed},
           mustChangePassword = 1,
           passwordChangedAt = NULL
       WHERE id = ${user.id}
