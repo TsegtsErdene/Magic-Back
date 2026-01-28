@@ -317,7 +317,7 @@ router.post('/admin/reset-password', async (req, res) => {
 
     let userQuery;
     if (userGUID) {
-      userQuery = await sql.query`SELECT TOP 1 userNameEN, companyId, userEmail FROM Users WHERE userGUID = ${userGUID}`;
+      userQuery = await sql.query`SELECT TOP 1 userNameEN, companyId, userEmail, userGUID FROM Users WHERE userGUID = ${userGUID}`;
     }
     else {
       return res.status(400).json({ error: 'Provide userId OR (username and companyId)' });
