@@ -29,8 +29,8 @@ exports.listCategories = async (req, res) => {
     }
     res.json(rows.map(p => ({
       id: p.requestDocID,
-      filetype: p.documentName || '',
-      CategoryName: p.documentCategory || '',
+      filetype: p.documentCategory || '',
+      CategoryName: p.documentName || '',
       projectID: p.projectGUID,
       status: p.status,
       comment: p.comment

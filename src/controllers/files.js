@@ -25,11 +25,16 @@ const sqlConfig = {
 };
 
 exports.uploadFile = async (req, res) => {
+  let pool;
+
   try {
     let { categories, filetypes } = req.body;
     const { userGUID, projectGUID } = req.user;
     const file = req.file;
 
+    // =====================
+    // Validation
+    // =====================
     if (!projectGUID) {
       return res.status(400).json({ error: "Project not selected" });
     }
@@ -38,92 +43,127 @@ exports.uploadFile = async (req, res) => {
       return res.status(400).json({ error: "File required" });
     }
 
+    if (!categories) {
+      return res.status(400).json({ error: "categories is required" });
+    }
+
+    if (!filetypes) {
+      return res.status(400).json({ error: "filetypes is required" });
+    }
+
     const categoriesArr = Array.isArray(categories) ? categories : [categories];
     const filetypesArr = Array.isArray(filetypes) ? filetypes : [filetypes];
 
+    // =====================
+    // File name handling
+    // =====================
     const decodedName = Buffer.from(file.originalname, "latin1").toString("utf8");
     const originalName = decodedName;
     const timestamp = new Date().toISOString().replace(/[-:.]/g, "");
     const blobName = `${projectGUID}/${timestamp}-${decodedName}`;
-    if (Array.isArray(filetypes)) {
-      // SQL-д хадгалах гэж нэг string болгоно
-      // Харин SharePoint руу массив байдлаар өгнө
-      // (доор массив хэлбэрээр явуулж байгаа)
-    } else if (typeof filetypes === 'string') {
-      // OK
-    } else {
-      return res.status(400).json({ error: 'filetypes is required' });
-    }
 
-    if (Array.isArray(categories)) {
-      // SQL-д хадгалах гэж нэг string болгоно
-      // Харин SharePoint руу массив байдлаар өгнө
-      // (доор массив хэлбэрээр явуулж байгаа)
-    } else if (typeof categories === 'string') {
-      // OK
-    } else {
-      return res.status(400).json({ error: 'categories is required' });
-    }
-
-    if (!file ) {
-      return res.status(400).json({ error: 'File required' });
-    }
-
-    // === 1) Azure Blob руу ===
+    // =====================
+    // 1) Upload to Azure Blob
+    // =====================
     const containerClient = blobServiceClient.getContainerClient(CONTAINER_NAME);
     const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+
     await blockBlobClient.uploadData(file.buffer, {
       blobHTTPHeaders: { blobContentType: file.mimetype },
     });
 
-    // // === 2) SharePoint руу ===
-    // const accessToken = await getSharePointAccessToken();
-    // // Эдгээрийг нэг удаа аваад .env-д хадгалж болно.
-    // const siteId =
-    //   process.env.SHAREPOINT_SITE_ID ||
-    //   (await getSiteId(accessToken, process.env.SHAREPOINT_HOSTNAME, process.env.SHAREPOINT_SITE_PATH));
-    // const driveId =
-    //   process.env.SHAREPOINT_DRIVE_ID ||
-    //   (await getDriveId(accessToken, siteId, process.env.SHAREPOINT_DRIVE_NAME || 'Shared Documents'));
-    // // Хавтас (companyName/AUA_Uploads/soft гэх мэт өөрөө зохион байгуул)
-    // const folder = process.env.SHAREPOINT_FOLDER
-    //   ? `${process.env.SHAREPOINT_FOLDER}/${companyName}`
-    //   : `AUA_Uploads/${companyName}`;
+    // =====================
+    // 2) SQL INSERT (row by row)
+    // =====================
+pool = await sql.connect(sqlConfig);
 
-    // const spRes = await uploadToSharePoint(
-    //   accessToken,
-    //   siteId,
-    //   driveId,
-    //   folder,
-    //   file.buffer,
-    //   timestamp + originalName,
-    //   Array.isArray(categories) ? categories : [categories]
-    // );
+for (let i = 0; i < categoriesArr.length; i++) {
+  const category = categoriesArr[i];
+  const filetype = filetypesArr[i] ?? filetypesArr[0] ?? "";
 
-    // === 3) SQL-д ===
-    const categoriesString = Array.isArray(categories) ? categories.join(';') : categories;
-    const filetypesting = Array.isArray(filetypes)  ? [...new Set(filetypes)].join(';') : filetypes;
-    console.log(categoriesString)
-    await sql.connect(sqlConfig);
-    await sql.query`
-      INSERT INTO ReceivedDocuments ( documentName, projectGUID, documentCategory, filename, blobPath, uploadedAt, status, username)
-      VALUES (${categoriesString}, ${projectGUID}, ${filetypesting}, ${originalName}, ${blobName}, GETDATE(), N'Хүлээгдэж буй', ${userGUID})
-    `;
-    for (const cat of categoriesArr) {
-      await sql.query`
-        UPDATE RequestedDocuments
-        SET status = N'Хүлээгдэж буй'
-        WHERE projectGUID = ${projectGUID} AND documentName = ${cat};
-    `;
-  }
+  // 1️⃣ RequestedDocuments-оос requestDocID авах
+  const reqDocResult = await pool.request()
+    .input("projectGUID", sql.UniqueIdentifier, projectGUID)
+    .input("documentName", sql.NVarChar, category)
+    .query(`
+      SELECT TOP 1 requestDocID
+      FROM RequestedDocuments
+      WHERE projectGUID = @projectGUID
+        AND documentName = @documentName
+      ORDER BY createdAt DESC
+    `);
 
+  const requestDocumentID =
+    reqDocResult.recordset.length > 0
+      ? reqDocResult.recordset[0].requestDocID
+      : null;
+
+  // 2️⃣ ReceivedDocuments INSERT
+  await pool.request()
+    .input("documentName", sql.NVarChar, category)
+    .input("projectGUID", sql.UniqueIdentifier, projectGUID)
+    .input("documentCategory", sql.NVarChar, filetype)
+    .input("filename", sql.NVarChar, originalName)
+    .input("blobPath", sql.NVarChar, blobName)
+    .input("username", sql.UniqueIdentifier, userGUID)
+    .input("requestDocumentID", sql.Int, requestDocumentID)
+    .query(`
+      INSERT INTO ReceivedDocuments (
+        documentName,
+        projectGUID,
+        documentCategory,
+        filename,
+        blobPath,
+        uploadedAt,
+        status,
+        username,
+        requestDocumentID
+      )
+      VALUES (
+        @documentName,
+        @projectGUID,
+        @documentCategory,
+        @filename,
+        @blobPath,
+        GETDATE(),
+        N'Хүлээгдэж буй',
+        @username,
+        @requestDocumentID
+      )
+    `);
+
+  // 3️⃣ RequestedDocuments статус update
+  await pool.request()
+    .input("projectGUID", sql.UniqueIdentifier, projectGUID)
+    .input("documentName", sql.NVarChar, category)
+    .query(`
+      UPDATE RequestedDocuments
+      SET status = N'Хүлээгдэж буй'
+      WHERE projectGUID = @projectGUID
+        AND documentName = @documentName
+    `);
+}
+
+
+    // =====================
+    // Response
+    // =====================
     res.json({
-      message: 'Uploaded to Blob + SharePoint + SQL',
-      blobPath: blobName
+      message: "Uploaded successfully",
+      blobPath: blobName,
+      insertedRows: categoriesArr.length
     });
+
   } catch (err) {
-    console.error(err?.response?.data || err);
-    res.status(500).json({ error: 'Upload failed', details: err.message || 'unknown error' });
+    console.error(err);
+    res.status(500).json({
+      error: "Upload failed",
+      details: err.message || "Unknown error"
+    });
+  } finally {
+    if (pool) {
+      pool.close(); // connection clean
+    }
   }
 };
 

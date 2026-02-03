@@ -240,14 +240,13 @@ router.post('/select-project', authMiddleware, async (req, res) => {
   try {
     const { projectGUID } = req.body;
     const { userGUID, companyGUID } = req.user;
-
-    console.log(projectGUID,userGUID,companyGUID);
+    // console.log(projectGUID)
 
     if (!projectGUID) {
       return res.status(400).json({ error: 'projectGUID is required' });
     }
 
-    await sql.connect(sqlConfig);
+   /* await sql.connect(sqlConfig);
 
     // 🔐 UserProjectAccess шалгах
     const access = await sql.query`
@@ -262,14 +261,14 @@ router.post('/select-project', authMiddleware, async (req, res) => {
     }
 
     const role = access.recordset[0].accessRole;
+    */
 
     // 🆕 ШИНЭ JWT (project орсон)
     const newToken = jwt.sign(
       {
         userGUID,
         companyGUID,
-        projectGUID,
-        projectRole: role
+        projectGUID
       },
       JWT_SECRET,
       { expiresIn: '2h' }
@@ -307,7 +306,7 @@ router.post('/admin/reset-password', async (req, res) => {
       return res.status(403).json({ error: 'Admin credentials required' });
     }
 
-    const { userGUID, tempPassword } = req.body;
+    const { userGUID, tempPassword, companyGUID } = req.body;
 
     if (!tempPassword || typeof tempPassword !== 'string') {
       return res.status(400).json({ error: 'tempPassword (string) is required' });
@@ -326,6 +325,23 @@ router.post('/admin/reset-password', async (req, res) => {
     if (!userQuery.recordset.length) {
       return res.status(404).json({ error: 'User not found' });
     }
+
+    if (companyGUID) {
+      const existingAccess = await sql.query`
+        SELECT * FROM UserCompanyAccess WHERE userGUID = ${userGUID} AND companyGUID = ${companyGUID}
+      `;
+      if (existingAccess.recordset.length > 0) {
+        return res.status(409).json({ error: 'User already has access to this company' });
+      }
+      else{
+         await sql.query`
+      INSERT INTO UserCompanyAccess (userGUID, companyGUID, companyRole)
+      VALUES (${userGUID}, ${companyGUID}, 'Member')
+    `;
+      }
+    }
+
+     
 
     const user = userQuery.recordset[0];
 
