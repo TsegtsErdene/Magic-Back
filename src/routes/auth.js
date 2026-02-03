@@ -330,15 +330,12 @@ router.post('/admin/reset-password', async (req, res) => {
       const existingAccess = await sql.query`
         SELECT * FROM UserCompanyAccess WHERE userGUID = ${userGUID} AND companyGUID = ${companyGUID}
       `;
-      if (existingAccess.recordset.length > 0) {
-        return res.status(409).json({ error: 'User already has access to this company' });
-      }
-      else{
-         await sql.query`
+      if (existingAccess.recordset.length === 0) {
+        await sql.query`
       INSERT INTO UserCompanyAccess (userGUID, companyGUID, companyRole)
-      VALUES (${userGUID}, ${companyGUID}, 'Member')
-    `;
+      VALUES (${userGUID}, ${companyGUID}, 'Member')`;
       }
+    
     }
 
      
