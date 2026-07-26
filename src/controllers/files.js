@@ -209,6 +209,30 @@ exports.listFiles = async (req, res) => {
 exports.getFileUrl = async (req, res) => {
   try {
     const { blobPath } = req.query;
+    if (!blobPath) {
+      return res.status(400).json({ error: "blobPath required" });
+    }
+
+    // Authorize the specific blob: it must correspond to a real received document.
+    // Service calls (the file flows, via x-flow-key) may fetch any received doc;
+    // signed-in users are restricted to their current project.
+    await sql.connect(sqlConfig);
+    const authzReq = new sql.Request();
+    authzReq.input("blobPath", sql.NVarChar, String(blobPath));
+    let authzQuery = "SELECT TOP 1 receiveNo FROM ReceivedDocuments WHERE blobPath = @blobPath";
+    if (!req.serviceCall) {
+      // Defense in depth: if no auth middleware set req.user, reject (never 500/leak).
+      if (!req.user || !req.user.projectGUID) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+      authzReq.input("projectGUID", sql.UniqueIdentifier, req.user.projectGUID);
+      authzQuery += " AND projectGUID = @projectGUID";
+    }
+    const authz = await authzReq.query(authzQuery);
+    if (authz.recordset.length === 0) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
     const containerClient = blobServiceClient.getContainerClient(CONTAINER_NAME);
     const blobClient = containerClient.getBlobClient(blobPath);
 
