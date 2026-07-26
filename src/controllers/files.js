@@ -221,6 +221,10 @@ exports.getFileUrl = async (req, res) => {
     authzReq.input("blobPath", sql.NVarChar, String(blobPath));
     let authzQuery = "SELECT TOP 1 receiveNo FROM ReceivedDocuments WHERE blobPath = @blobPath";
     if (!req.serviceCall) {
+      // Defense in depth: if no auth middleware set req.user, reject (never 500/leak).
+      if (!req.user || !req.user.projectGUID) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
       authzReq.input("projectGUID", sql.UniqueIdentifier, req.user.projectGUID);
       authzQuery += " AND projectGUID = @projectGUID";
     }
